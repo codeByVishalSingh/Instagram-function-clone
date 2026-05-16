@@ -5,4 +5,4 @@ const ConversationSchema = new mongoose.Schema({
     reciverId:[{ type: mongoose.Schema.Types.ObjectId, ref: 'Message' }],
   
 })
-export const Conversation = mongoose.model("Message",MessageSchema)
+export const ConversationModel = mongoose.model("Message",MessageSchema)

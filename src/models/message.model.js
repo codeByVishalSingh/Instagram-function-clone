@@ -8,4 +8,4 @@ const MessageSchema = new mongoose.Schema({
         required:true
     }
 })
-export const Message = mongoose.model("Message",MessageSchema)
+export const MessageModel = mongoose.model("Message",MessageSchema)
