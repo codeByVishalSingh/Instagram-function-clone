@@ -1,29 +1,51 @@
-import mongoose, { Types } from "mongoose";
+import mongoose from "mongoose";
 
-const userScehma = new mongoose.Schema({
-    username:{
-         Type:String, required:true, unique:true   
+const userSchema = new mongoose.Schema(
+  {
+    username: {
+      type: String,
+      required: true,
+      unique: true,
     },
-      email:{
-         Type:String, required:true, unique:true   
+    email: {
+      type: String,
+      required: true,
+      unique: true,
     },
-        password:{
-         Type:String, required:true,  
+    password: {
+      type: String,
+      required: true,
     },
-      profilePic:{
-         Type:String, default:'',  
+    profilePic: {
+      type: String,
+      default: "",
     },
-        bio:{
-         Type:String, default:'',   
+    bio: {
+      type: String,
+      default: "",
     },
-      gender:{
-         Type:String, enum:['male', 'female'],   
+    gender: {
+      type: String,
+      enum: ["male", "female"],
     },
-    followers:[{Type:mongoose.Schema.Types.ObjectId, ref:"User"}],
-    following:[{Type:mongoose.Schema.Types.ObjectId, ref:"User"}],
-    posts:[{Type:mongoose.Schema.Types.ObjectId,ref:"Post"}],
-    bookmarks:[{Type:mongoose.Schema.Types.ObjectId,ref:"Post"}]
-  
-}, {timestamps:true});
 
-export const UserModel = mongoose.Model('User',userScehma)
+    followers: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+    ],
+
+    following: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "User" }
+    ],
+
+    posts: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Post" }
+    ],
+
+    bookmarks: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Post" }
+    ],
+  },
+  { timestamps: true }
+);
+
+export const UserModel = mongoose.model("User", userSchema);

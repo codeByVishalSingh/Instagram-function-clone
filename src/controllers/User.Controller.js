@@ -3,11 +3,10 @@ import bcrypt from"bcryptjs";
 import jwt from"jsonwebtoken";
 import cloudniary from "../utils/cloudniary.js";
 import getDataUri from "../utils/daturi.js";
-import { use } from "react";
 export const RegisterContoller = async (req,res)=>{
     try {
         const {username, email,password} = req.body;
-        if(!username|| !email || password){
+        if(!username|| !email || !password){
        return res.status(401).json({
             message:"Somthing is Missing please check",
             success:false,
@@ -22,7 +21,7 @@ export const RegisterContoller = async (req,res)=>{
         }
         const hashedPassowrd = await bcrypt.hash(password, 10);
 
-        await UserModel.Create({
+        await UserModel.create({
             username,
             email,
             password:hashedPassowrd,
@@ -37,61 +36,88 @@ export const RegisterContoller = async (req,res)=>{
         
     }
 }
-export const LoginController = (req,res)=>{
+export const LoginController = async (req, res) => {
   try {
-        const [email,password] = req.body;
 
-    if(!email || !password){
-        
-         return res.status(401).json({
-            message:"Somthing is Missing please check",
-            success:false,
-        })
+    // FIX 1
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(401).json({
+        message: "Something is missing please check",
+        success: false,
+      });
     }
-        let user = UserModel.findOne({email});
-        if(!user){
-               return res.status(401).json({
-            message:"Invaild User",
-            success:false,
-        })
-        }
-        const isPasswordMatch = await bcrypt.compare(password, user.password);
-        if(!isPasswordMatch){
-            return res.status(401).json({
-                message:"incorrect email or password ",
-                success:false,
-            });
 
-        };
-    
-        user = {
-            _id:user._id,
-            username:user.username,
-            email:user.email,
-            profilpic:user.profilpic,
-            bio:user.bio,
-            follower:user.follower,
-            following:user.following,
-            posts:user.posts,
-            
-        }
+    // FIX 2
+    let user = await UserModel.findOne({ email });
 
-        const token = await jwt.sign({userid:user_id},process.env.JWT_SECRET,{expireIn:'1d'});
-        return res.cookie('token',token, {httpOnly:true, sameSite:'Strict', maxAge:1*24*60*60*1000}).json({
-            message:`Welcome back ${user.username}`,
-            success:true,
-        })
+    if (!user) {
+      return res.status(401).json({
+        message: "Invalid User",
+        success: false,
+      });
+    }
+
+    // FIX 3
+    const isPasswordMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
+
+    if (!isPasswordMatch) {
+      return res.status(401).json({
+        message: "Incorrect email or password",
+        success: false,
+      });
+    }
+
+    // optional sanitized user object
+    const userData = {
+      _id: user._id,
+      username: user.username,
+      email: user.email,
+      profilpic: user.profilpic,
+      bio: user.bio,
+      follower: user.follower,
+      following: user.following,
+      posts: user.posts,
+    };
+
+    // FIX 4
+    const token = jwt.sign(
+      { userid: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+    return res
+      .cookie("token", token, {
+        httpOnly: true,
+        sameSite: "strict",
+        maxAge: 1 * 24 * 60 * 60 * 1000,
+      })
+      .json({
+        message: `Welcome back ${user.username}`,
+        success: true,
+        user: userData,
+      });
+
   } catch (error) {
     console.log(error);
-    
-  }
-}
 
-export const logout = async (req,res)=>{
+    return res.status(500).json({
+      message: "Server Error",
+      success: false,
+    });
+  }
+};
+
+export const logoutController = async (req,res)=>{
     try {
         
         return res.cookie("token"," ", {maxAge:0}).json({
-            message:" UserLogout Successfully",
+            message:" User Logout Successfully",
             success:true,
         })
     } catch (error) {
@@ -103,7 +129,7 @@ export const logout = async (req,res)=>{
 export const getUserProfile = async (req,res)=>{
     try {
         const userid = req.params.id;
-        let user = await UserModel.findById(userid);
+        let user = await UserModel.findById(userid).select('-password');
         res.status(201).json({
             user,
             success:true,
