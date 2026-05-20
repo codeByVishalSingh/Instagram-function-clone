@@ -1,7 +1,7 @@
 import { UserModel } from "../models/user.model.js";
 import bcrypt from"bcryptjs";
 import jwt from"jsonwebtoken";
-import cloudniary from "../utils/cloudniary.js";
+import cloudinary from "../utils/cloudniary.js";
 import getDataUri from "../utils/daturi.js";
 export const RegisterContoller = async (req,res)=>{
     try {
@@ -77,7 +77,7 @@ export const LoginController = async (req, res) => {
       _id: user._id,
       username: user.username,
       email: user.email,
-      profilpic: user.profilpic,
+      profilePic: user.profilePic,
       bio: user.bio,
       follower: user.follower,
       following: user.following,
@@ -140,98 +140,141 @@ export const getUserProfile = async (req,res)=>{
         
     }
 }
-export const editUserProfile = async (req,res)=>{
+
+
+export const editUserProfile = async (req, res) => {
     try {
-        const userId = req.id;
-        const {bio, gender} = req.body;
+        const userId = req.id; // Derived from your isAuthenticateUser middleware
+        const { bio, gender } = req.body;
+        console.log("DEBUG: Extracted User ID is ->", userId);
+        
+        // 1. Get the file from req.file (this is where Multer places it)
+        const profilePic = req.file; 
+        
         let cloudResponse;
-        if(profilpic){
-            const fileurl = getDataUri(profilpic)
-            cloudResponse = await cloudniary.uploader.upload(fileurl)
-
-
+        if (profilePic) {
+            // Pass the Multer file object into your DataURI helper
+            const fileurl = getDataUri(profilePic);
+            cloudResponse = await cloudinary.uploader.upload(fileurl);
         }
-        const user = UserModel.findById(userId)
-         if(!user){
-            req.status(404).json({
-                message: "User not Found",
-                success:false,
-            })
-         }
-         if(bio) user.bio = bio;
-         if(gender) user.gender = gender;
-         if(profilpic) user.profilpic = cloudResponse.secure_url;
-         await user.save()
 
-         return res.status(201).json({
-            message:"User Profile Pic Udated Successfully",
-            success:true,
-         })
-                      
-    } catch (error) {
-        console.log(error);
+        // 2. Add 'await' so you actually get the user document back from MongoDB
+        const user = await UserModel.findById(userId).select('-password');
         
+        if (!user) {
+            // 3. Changed 'req.status' to 'res.status'
+            return res.status(404).json({
+                message: "User not Found",
+                success: false,
+            });
+        }
+
+        // 4. Update the fields if they were provided in the request
+        if (bio) user.bio = bio;
+        if (gender) user.gender = gender;
+        if (cloudResponse) user.profilePic = cloudResponse.secure_url;
+
+        await user.save();
+
+        return res.status(200).json({
+            message: "User Profile Updated Successfully",
+            success: true,
+            user // Good practice to send the updated user object back
+        });
+                     
+    } catch (error) {
+        console.error("Error in editUserProfile:", error);
+        return res.status(500).json({
+            message: "Internal server error",
+            success: false
+        });
     }
 }
-export const getSuggestedUser = async ()=>{
+
+
+export const getSuggestedUser = async (req, res) => {
     try {
         
-        const sujggestedUsers = await UserModel.find({_id:{$ne:req.id}}).select("-password");
-        if(!sujggestedUsers){
+        const suggestedUsers = await UserModel.find({ _id: { $ne: req.id } }).select("-password");
+        
+       
+        if (!suggestedUsers || suggestedUsers.length === 0) {
             return res.status(400).json({
-                message:"Currently No Suggested User "
-            })
-
+                message: "Currently No Suggested Users",
+                success: false
+            });
         }
 
-         return res.status(200).json({
-                success:true,
-                users:sujggestedUsers,
-            })
+     
+        return res.status(200).json({
+            success: true,
+            users: suggestedUsers,
+        });
+
     } catch (error) {
-        console.log(error);
-        
+        console.log("Error in getSuggestedUser:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
     }
 }
-export const followOrUnfollow =async ()=>{
-  const followUser = req.id;
-  const  userToFollow = req.params.id;
+// 1. CRITICAL FIX: Added (req, res) parameters to the function
+export const followOrUnfollow = async (req, res) => {
+  try {
+    const followUser = req.id; // The logged-in user (from your auth middleware)
+    const userToFollow = req.params.id; // The ID of the user to follow/unfollow
 
-  if(followUser === userToFollow){
-    return res.status(400).json({
-        message:"User Can not follow or unfollow Yourself",
-        success:false,
-    })
-  }
-
-  const user = UserModel.findById(followUser);
-  const target = UserModel.findById(userToFollow);
-  if(!user || !target){
+    // Prevent a user from following themselves
+    if (followUser === userToFollow) {
       return res.status(400).json({
-        message:"Invaild User",
-        success:false,
-    })
+        message: "You cannot follow or unfollow yourself",
+        success: false,
+      });
+    }
 
+    // 2. CRITICAL FIX: Added 'await' to both database fetches
+    const user = await UserModel.findById(followUser);
+    const target = await UserModel.findById(userToFollow);
+
+    if (!user || !target) {
+      return res.status(404).json({
+        message: "Invalid User or user not found",
+        success: false,
+      });
+    }
+
+    // Check if the current user is already following the target user
+    const isFollowing = user.following.includes(userToFollow);
+
+    if (isFollowing) {
+      // UNFOLLOW LOGIC: Pull the IDs out of the respective arrays
+      await Promise.all([
+        UserModel.updateOne({ _id: followUser }, { $pull: { following: userToFollow } }),
+        UserModel.updateOne({ _id: userToFollow }, { $pull: { followers: followUser } }),
+      ]);
+      
+      return res.status(200).json({
+        message: "User Unfollowed Successfully",
+        success: true,
+      });
+    } else {
+      // FOLLOW LOGIC: Push the IDs into the respective arrays
+      await Promise.all([
+        UserModel.updateOne({ _id: followUser }, { $push: { following: userToFollow } }),
+        UserModel.updateOne({ _id: userToFollow }, { $push: { followers: followUser } }),
+      ]);
+
+      return res.status(200).json({
+        message: "User Followed Successfully",
+        success: true,
+      });
+    }
+  } catch (error) {
+    console.error("Error in followOrUnfollow:", error);
+    return res.status(500).json({
+      message: "Internal server error",
+      success: false,
+    });
   }
-  const isFollowing = user.following.includes(userToFollow)
-  if(isFollowing){
-    await Promise.all([
-        UserModel.updateOne({ _id: followUser}, {$pull: {following: userToFollow}}),
-        UserModel.updateOne({ _id: userToFollow}, {$pull: {followers: followUser}}),
-    ])
-    return res.status(200).json({
-        message:"User Unfollow Successsfully",
-        success:true,
-    })
-  }
-  else {
-       await Promise.all([
-        UserModel.updateOne({ _id: followUser}, {$push: {following: userToFollow}}),
-        UserModel.updateOne({ _id: userToFollow}, {$push: {followers: followUser}}),
-    ])
-    return res.status(200).json({
-        message:"User follow Successsfully",
-        success:true,
-    })
-  }
-}
+};
