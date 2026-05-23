@@ -4,8 +4,8 @@ const MessageSchema = new mongoose.Schema({
     senderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     reciverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     message:{
-        tupe:String,
-        required:true
+        type:String,
+        required: true
     }
 })
 export const MessageModel = mongoose.model("Message",MessageSchema)

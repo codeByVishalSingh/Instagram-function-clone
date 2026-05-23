@@ -3,6 +3,7 @@ import bcrypt from"bcryptjs";
 import jwt from"jsonwebtoken";
 import cloudinary from "../utils/cloudniary.js";
 import getDataUri from "../utils/daturi.js";
+import { PostModel } from "../models/post.model.js";
 export const RegisterContoller = async (req,res)=>{
     try {
         const {username, email,password} = req.body;
@@ -71,6 +72,24 @@ export const LoginController = async (req, res) => {
         success: false,
       });
     }
+      // FIX 4
+    const token = jwt.sign(
+      { userid: user._id },
+      process.env.JWT_SECRET,
+      { expiresIn: "1d" }
+    );
+
+
+    const populatedPosts = await Promise.all(
+
+           user.posts.map( async (postId) => {
+                const post = await PostModel.findById(postId);
+                if(post.author.equals(user._id)){
+                    return post;
+                }
+                return null;
+            })
+    )
 
     // optional sanitized user object
     const userData = {
@@ -81,15 +100,8 @@ export const LoginController = async (req, res) => {
       bio: user.bio,
       follower: user.follower,
       following: user.following,
-      posts: user.posts,
+      posts: populatedPosts,
     };
-
-    // FIX 4
-    const token = jwt.sign(
-      { userid: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
 
     return res
       .cookie("token", token, {
