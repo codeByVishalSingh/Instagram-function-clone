@@ -11,7 +11,7 @@ export const isAuthenticateUser = async (req, res, next) => {
         }
         
      // Inside your isAuthenticateUser middleware file
-const decode = await jwt.verify(token, process.env.JWT_SECRET);
+const decode = await jwt.verify(token, process.env.JWT_SECRET);  
 
 if (!decode) {
     return res.status(401).json({ message: "Invalid User", success: false });

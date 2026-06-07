@@ -1,48 +1,68 @@
-import sharp from "sharp"
-import cloudniary from "../utils/cloudniary.js";
+import sharp from "sharp";
+import cloudinary from "../utils/cloudniary.js"; 
 import { PostModel } from "../models/post.model.js";
 import { UserModel } from "../models/user.model.js";
-import { populate } from "dotenv";
 import { CommentModel } from "../models/comment.model.js";
-export const addNewPost = async (req,res)=>{
+
+export const addNewPost = async (req, res) => {
     try {
-        const {caption} = req.body;
+        const { caption } = req.body;
         const image = req.file;
         const authorId = req.id;
 
-        if(!image){
-            res.status(400).json({message: "Image ids Require"})
+        // 1. Validate if an image was uploaded
+        if (!image) {
+            return res.status(400).json({ 
+                message: "Image is required", 
+                success: false 
+            });
         }
         
-        const optimizedImageBuffer = await sharp(image, buffer).resize({width:800, height:800, fir:'inside'}).toFormat(
-            "jpeg", {quality:80}).toBuffer();
+        // 2. Process image buffer with Sharp
+        // FIXED: Passed image.buffer and corrected 'fit' property
+        const optimizedImageBuffer = await sharp(image.buffer)
+            .resize({ width: 800, height: 800, fit: 'inside' })
+            .toFormat("jpeg", { quality: 80 })
+            .toBuffer();
         
+        // 3. Convert buffer to Data URI for Cloudinary
+        // FIXED: Corrected syntax to data:image/jpeg;base64,
+        const fileUri = `data:image/jpeg;base64,${optimizedImageBuffer.toString('base64')}`;
+        
+        // 4. Upload to Cloudinary
+        const cloudResponse = await cloudinary.uploader.upload(fileUri);
 
-           const fileUri = `data:/image/jpeg.base64, ${optimizedImageBuffer.toString('base64')}`;
-           const cloudResponse= await cloudniary.uploader.upload(fileUri)
-           const post = await PostModel.create({
+        // 5. Create the post in database
+        const post = await PostModel.create({
             caption,
-            image:cloudResponse.secure_url,
-            author:authorId
-           });
+            image: cloudResponse.secure_url,
+            author: authorId
+        });
 
-           const user = await UserModel.findById(authorId);
-           if(user){
+        // 6. Push post reference to the author's user document
+        const user = await UserModel.findById(authorId);
+        if (user) {
             user.posts.push(post._id);
             await user.save();
-           }
+        }
 
-           await post.populate({path:'author',select:'-password'}) ;
-           return res.status(201).json({
+        // 7. Populate author info (excluding password) before returning
+        await post.populate({ path: 'author', select: '-password' });
+
+        return res.status(201).json({
             message: "New Post Added Successfully",
             post,
-            success:true,
-           })
+            success: true,
+        });
+
     } catch (error) {
-        console.log(error);
-        
+        console.error("Error creating post:", error);
+        return res.status(500).json({
+            message: "Internal server error",
+            success: false
+        });
     }
-}
+};
 export const getAllPost = async (req, res) => {
     try {
         const posts = await PostModel.find().sort({ createdAt: -1 })
@@ -135,7 +155,7 @@ export const dislikePost = async (req,res)=>{
   }
 }
 
-export const addComment = async ()=>{
+export const addComment = async (req,res)=>{
     try {
         const postId = req.params.id;
         const commentUserId = req.id;
@@ -154,9 +174,11 @@ export const addComment = async ()=>{
             author:commentUserId,
             post:postId,
 
-        }).populate({
+        })
+
+        await comment.populate({
             path:'author',
-            select:"username, profilePic"
+            select:"username  profilePic"
         });
         post.comments.push(comment._id);
         await post.save();
@@ -189,38 +211,44 @@ export const getCommentsOfPost = async (req,res)=>{
         
     }
 }
-export const  deletePost = async (req,res)=>{
+export const deletePost = async (req, res) => {
     try {
-        const postid = req.params.id;
+        // 🔑 FIXED: Changed 'postid' to 'postId' to match the rest of the function
+        const postId = req.params.id; 
         const authorId = req.id;
-        const post = await PostModel.findById(postid);
-        if(!post){
-            return res.status(401).json({
-                message: "post not found ",
-                success:false,
-            })
+        
+        const post = await PostModel.findById(postId);
+        if (!post) {
+            return res.status(404).json({ // Changed status to 404 (Not Found) instead of 401 (Unauthorized)
+                message: "Post not found",
+                success: false,
+            });
         }
 
-        //  delete post
+        // Delete post
+        await PostModel.findByIdAndDelete(postId);
 
-        await PostModel.findByIdAndDelete(postid);
-
-        // remove the post id from user
-
+        // Remove the post id from user
         let user = await UserModel.findById(authorId);
-         user.posts = user.posts.filter(id => id.toString() !== postId);
-        await user.save();
+        if (user) {
+            // 🔑 This will now execute perfectly without crashing!
+            user.posts = user.posts.filter(id => id.toString() !== postId);
+            await user.save();
+        }
 
-        // delete associated comments
-        await CommentModel.deleteMany({post:postId});
+        // Delete associated comments
+        await CommentModel.deleteMany({ post: postId });
 
         return res.status(200).json({
-            success:true,
-            message:'Post deleted'
-        })
+            success: true,
+            message: 'Post deleted'
+        });
     } catch (error) {
-        console.log(error);
-        
+        console.error("Delete Post Error Stack:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error"
+        });
     }
 }
 export const bookmarkPost = async (req,res)=>{

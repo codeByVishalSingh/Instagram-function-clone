@@ -4,9 +4,12 @@ import jwt from"jsonwebtoken";
 import cloudinary from "../utils/cloudniary.js";
 import getDataUri from "../utils/daturi.js";
 import { PostModel } from "../models/post.model.js";
+
+
 export const RegisterContoller = async (req,res)=>{
     try {
         const {username, email,password} = req.body;
+       
         if(!username|| !email || !password){
        return res.status(401).json({
             message:"Somthing is Missing please check",
@@ -39,8 +42,6 @@ export const RegisterContoller = async (req,res)=>{
 }
 export const LoginController = async (req, res) => {
   try {
-
-    // FIX 1
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -50,7 +51,6 @@ export const LoginController = async (req, res) => {
       });
     }
 
-    // FIX 2
     let user = await UserModel.findOne({ email });
 
     if (!user) {
@@ -60,11 +60,7 @@ export const LoginController = async (req, res) => {
       });
     }
 
-    // FIX 3
-    const isPasswordMatch = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const isPasswordMatch = await bcrypt.compare(password, user.password);
 
     if (!isPasswordMatch) {
       return res.status(401).json({
@@ -72,26 +68,25 @@ export const LoginController = async (req, res) => {
         success: false,
       });
     }
-      // FIX 4
+
     const token = jwt.sign(
       { userid: user._id },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
 
+    // FIX: Safely resolve posts and filter out missing ones
+    const postPromises = user.posts.map(async (postId) => {
+      const post = await PostModel.findById(postId);
+      // Check if post exists AND if it belongs to the user before accessing .author
+      if (post && post.author.equals(user._id)) {
+        return post;
+      }
+      return null;
+    });
 
-    const populatedPosts = await Promise.all(
+    const populatedPosts = (await Promise.all(postPromises)).filter(post => post !== null);
 
-           user.posts.map( async (postId) => {
-                const post = await PostModel.findById(postId);
-                if(post.author.equals(user._id)){
-                    return post;
-                }
-                return null;
-            })
-    )
-
-    // optional sanitized user object
     const userData = {
       _id: user._id,
       username: user.username,
@@ -117,14 +112,12 @@ export const LoginController = async (req, res) => {
 
   } catch (error) {
     console.log(error);
-
     return res.status(500).json({
       message: "Server Error",
       success: false,
     });
   }
 };
-
 export const logoutController = async (req,res)=>{
     try {
         
@@ -141,7 +134,7 @@ export const logoutController = async (req,res)=>{
 export const getUserProfile = async (req,res)=>{
     try {
         const userid = req.params.id;
-        let user = await UserModel.findById(userid).select('-password');
+        let user = await UserModel.findById(userid).populate({path:"posts",createdAt:-1}).populate('bookmarks')
         res.status(201).json({
             user,
             success:true,
@@ -156,48 +149,47 @@ export const getUserProfile = async (req,res)=>{
 
 export const editUserProfile = async (req, res) => {
     try {
-        const userId = req.id; // Derived from your isAuthenticateUser middleware
-        const { bio, gender } = req.body;
-        console.log("DEBUG: Extracted User ID is ->", userId);
+        const userId = req.id; 
+        const { bio, gender } = req.body; // Frontend se aane wali values
+        const profilePic = req.file; // Multer se aayi hui file
         
-        // 1. Get the file from req.file (this is where Multer places it)
-        const profilePic = req.file; 
-        
-        let cloudResponse;
-        if (profilePic) {
-            // Pass the Multer file object into your DataURI helper
-            const fileurl = getDataUri(profilePic);
-            cloudResponse = await cloudinary.uploader.upload(fileurl);
-        }
-
-        // 2. Add 'await' so you actually get the user document back from MongoDB
+        // 1. User find karein
         const user = await UserModel.findById(userId).select('-password');
-        
         if (!user) {
-            // 3. Changed 'req.status' to 'res.status'
             return res.status(404).json({
                 message: "User not Found",
                 success: false,
             });
         }
 
-        // 4. Update the fields if they were provided in the request
-        if (bio) user.bio = bio;
-        if (gender) user.gender = gender;
-        if (cloudResponse) user.profilePic = cloudResponse.secure_url;
+        // 2. Profile Photo Upload Logic
+        if (profilePic) {
+            const fileurl = getDataUri(profilePic);
+            const cloudResponse = await cloudinary.uploader.upload(fileurl);
+            user.profilePic = cloudResponse.secure_url;
+        }
 
+        // 3. Bio & Gender Update Logic (Conditional)
+        if (bio !== undefined) user.bio = bio;
+        
+        // Sirf tabhi update karein agar gender ki value valid ho aur enum se match karti ho
+        if (gender && (gender === "male" || gender === "female")) {
+            user.gender = gender.toLowerCase();
+        }
+
+        // 4. Save
         await user.save();
 
         return res.status(200).json({
             message: "User Profile Updated Successfully",
             success: true,
-            user // Good practice to send the updated user object back
+            user // Updated user object return karein
         });
                      
     } catch (error) {
         console.error("Error in editUserProfile:", error);
         return res.status(500).json({
-            message: "Internal server error",
+            message: "Internal server error: " + error.message, // Error detail dekhne ke liye
             success: false
         });
     }

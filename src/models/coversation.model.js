@@ -10,4 +10,4 @@ const conversationSchema = new mongoose.Schema({
         ref: 'Message'
     }]
 })
-export const ConversationModel = mongoose.model('Conversation', conversationSchema);
+export const ConversationModel = mongoose.model('Conversation', conversationSchema);  

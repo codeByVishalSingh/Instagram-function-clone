@@ -18,27 +18,25 @@ app.get("/",(req, res) =>{
     })
 })
 
-app.use(express.json())
+app.use(express.json());
 app.use(cookieParser())
-app.use(urlencoded({extended:true}))
+app.use(urlencoded({ extended: true }))
 
 const corsOptions = {
-    origin:'http://loacalhost:5173:',
-    Credential:true,
+    origin: "http://localhost:5173",
+    credentials: true,
 }
 
 app.use(cors(corsOptions))
 
-// api 
-
+// api
 app.use("/api/v1/user", userRoute)
 app.use("/api/v1/post", postRoute)
 app.use("/api/v1/message", messageRoute)
 
-app.listen(PORT,()=>{
-    
+app.listen(PORT, () => {
+
     connectDB();
     console.log(`Server is running on port ${PORT}`);
-    
-})
 
+})
