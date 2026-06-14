@@ -3,6 +3,7 @@ import cloudinary from "../utils/cloudniary.js";
 import { PostModel } from "../models/post.model.js";
 import { UserModel } from "../models/user.model.js";
 import { CommentModel } from "../models/comment.model.js";
+import { getReciverSocketId, io } from "../Socket/socket.js";
 
 export const addNewPost = async (req, res) => {
     try {
@@ -119,6 +120,21 @@ export const likePost = async (req,res)=>{
    await post.updateOne({ $addToSet :{likes:likedUserId}})
    await post.save();
 
+   const  user = await UserModel.findById(likedUserId).select('username profilePic');
+   const postOwnerId = post.author.toString();
+   if(postOwnerId !== likedUserId){
+
+    const notification = {
+        type:'like',
+        userId:likedUserId,
+        userDeatails:user,
+        postId,
+        meassage:'Your Post was Liked'
+    }
+    const postOwnerSocketId = getReciverSocketId(postOwnerId);
+    io.to(postOwnerSocketId).emit('notification',notification)
+   }
+
    return res.status(200).json({
     message:"Post Liked",
     success: true
@@ -138,6 +154,20 @@ export const dislikePost = async (req,res)=>{
    if(!post){
      return res.status(401).json({message:"Post not found", success:false})
 
+   }
+    const  user = await UserModel.findById(likedUserId).select('username profilePic');
+   const postOwnerId = post.author.toString();
+   if(postOwnerId !== likedUserId){
+
+    const notification = {
+        type:'dislike',
+        userId:likedUserId,
+        userDeatails:user,
+        postId,
+        meassage:'Your Post was disliked'
+    }
+    const postOwnerSocketId = getReciverSocketId(postOwnerId);
+    io.to(postOwnerSocketId).emit('notification',notification)
    }
 
    await post.updateOne({ $pull :{likes:likedUserId}})
