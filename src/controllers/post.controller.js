@@ -127,7 +127,7 @@ export const likePost = async (req,res)=>{
     const notification = {
         type:'like',
         userId:likedUserId,
-        userDeatails:user,
+        userDetails:user,
         postId,
         meassage:'Your Post was Liked'
     }
